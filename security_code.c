@@ -5,6 +5,11 @@
 #include <sys/types.h> /* pid_t */
 #include <sys/wait.h> 
 
+#include <gtk/gtk.h>
+
+#define CODE_LENGTH 5 // code length
+#define SEC_WAIT 10 // seconds before code expires
+
 typedef struct User_struct {
     char* name;
     char* email;
@@ -92,29 +97,43 @@ char* get_rand_code(int length) {
     return rand_string(malloc(sizeof(char[length + 1])), length + 1);
 }
 
+
+int code_inserted;
+char *code;
+
+static void enter_callback(GtkWidget *widget, GtkApplication* app)
+{
+    const gchar *entry_text = gtk_entry_get_text (GTK_ENTRY (widget));
+    printf ("Entry: %s\nCode: %s\n", entry_text, code);
+
+    if(strcmp(code, entry_text) == 0) {
+        code_inserted = 1;
+        printf ("Bom codigo\n");
+        g_application_quit(G_APPLICATION(app));
+    } else {
+        printf ("Mau codigo\n");
+    }
+
+}
+
+static void activate (GtkApplication* app, gpointer user_data)
+{
+    GtkWidget *window = gtk_application_window_new (app);
+    gtk_window_set_title (GTK_WINDOW (window), "Insert Security Code");
+    gtk_window_set_default_size (GTK_WINDOW (window), 250, 20);
+
+    GtkWidget *entry = gtk_entry_new ();
+    gtk_entry_set_max_length (GTK_ENTRY (entry), CODE_LENGTH);
+    g_signal_connect (entry, "activate", G_CALLBACK (enter_callback), app);
+    gtk_entry_set_text (GTK_ENTRY (entry), "code");
+
+    gtk_container_add (GTK_CONTAINER (window), entry);
+
+    gtk_widget_show_all (window);
+}
+
 int main(void)
 {
-
-    uid_t uid = geteuid();
-    struct passwd *pw = getpwuid(uid);
-    if (pw) {
-        printf("%s : %s\n", pw->pw_name, pw->pw_shell);
-    }
-
-	// gnome-terminal
-	id_t pid = fork();
-    if (pid==0)
-    { /* child process */
-            execl ("/bin/bash", "bash", NULL);
-            exit(127); /* only if execv fails */
-    }
-    else
-    { /* parent process */
-           waitpid(pid,0,0); /* wait for child to exit */
-    }
-	return 0;
-
-
     // lê ficheiro users
     User users[64];
     if(read_users(users) != 0)
@@ -122,10 +141,47 @@ int main(void)
      
     // vê o email do utilizador atual
     char* email = get_email(users,get_current_username());
-    printf("%s\n", email);
+
+    // envia email
+    /*
+    int email_status = send_mail(code, email);
+    if(email_status != 0)
+        return email_status; 
+    */
 
     // gera código
-    char* code = get_rand_code(5);
-    
-    return send_mail(code, email);
+    code = get_rand_code(CODE_LENGTH);
+    code_inserted = 0;
+
+    int fd[2];
+    pipe(fd);
+    pid_t pid = fork();
+    if (pid==0) { // child
+        alarm(SEC_WAIT); // tempo para introduzir código
+
+        // app gtk para input do código
+        GtkApplication *app = gtk_application_new ("org.security_code", G_APPLICATION_FLAGS_NONE);
+        g_signal_connect (app, "activate", G_CALLBACK (activate), NULL);
+        int gtkstatus = g_application_run (G_APPLICATION (app), 0, NULL);
+        g_object_unref (app);
+
+        alarm(0);
+        exit(0);
+    } else {
+        int status;
+        wait(&status);
+        if(WIFSIGNALED(status)){
+            if (WTERMSIG(status) == SIGALRM) {
+                printf("Code expired after %d sec\n", SEC_WAIT);
+            }
+        } else {
+            if(code_inserted == 0) {
+                printf("Failed\n");
+            } else {
+                printf("Success\n");
+            }
+        }
+    }
+
+	return 0;
 }
