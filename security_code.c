@@ -23,6 +23,14 @@ static void free_user(User user)
     free(user);
 }
 
+
+static void free_users(User users[])
+{
+    for(int i = 0; users[i]; i++) {
+        free_user(users[i]);
+    }
+}
+
 // preenche o array com users, NULL terminated
 // abre o ficheiro users
 static int read_users(User users[], size_t size ,char* path)
@@ -95,44 +103,43 @@ static int code_inserted;
 static char *code;
 static int tries;
 
+GtkWidget *g_window;
+
 static void enter_callback(GtkWidget *widget, GtkWidget *window)
 {
     const gchar *entry_text = gtk_entry_get_text (GTK_ENTRY (widget));
-    printf ("Entry: %s\nCode: %s\n", entry_text, code);
 
     if(strcmp(code, entry_text) == 0) {
         code_inserted = 1;
-        printf ("Bom codigo\n");
-        gtk_window_close(GTK_WINDOW (window));
+        gtk_window_close(GTK_WINDOW (g_window));
     } else {
-        printf ("Mau codigo\n");
+        printf("%p", g_window);
         tries++;
         if(tries >= MAX_TRIES)
-            gtk_window_close(GTK_WINDOW (window));
+            gtk_window_close(GTK_WINDOW (g_window));
     }
 }
 
 static void activate (GtkApplication* app, int* code_length)
 {
-    GtkWidget *window = gtk_application_window_new(app);
-    gtk_window_set_title (GTK_WINDOW (window), "Insert Security Code");
-    gtk_window_set_default_size (GTK_WINDOW (window), 250, 20);
+    g_window = gtk_application_window_new(app);
+    gtk_window_set_title (GTK_WINDOW (g_window), "Insert Security Code");
+    gtk_window_set_default_size (GTK_WINDOW (g_window), 250, 20);
 
     GtkWidget *entry = gtk_entry_new ();
     gtk_entry_set_max_length (GTK_ENTRY (entry), *code_length);
-    g_signal_connect (entry, "activate", G_CALLBACK (enter_callback), window);
+    g_signal_connect (entry, "activate", G_CALLBACK (enter_callback), g_window);
     gtk_entry_set_text (GTK_ENTRY (entry), "code");
 
-    gtk_container_add (GTK_CONTAINER (window), entry);
+    gtk_container_add (GTK_CONTAINER (g_window), entry);
 
-    gtk_widget_show_all (window);
+    gtk_widget_show_all (g_window);
 }
 
-static GtkApplication *g_app;
 
 void timer(int c) 
 {
-    g_application_quit(G_APPLICATION(g_app));
+    gtk_window_close(GTK_WINDOW (g_window));
 }
 
 int check_code(int code_length, int sec_wait, int max_tries)
@@ -147,16 +154,17 @@ int check_code(int code_length, int sec_wait, int max_tries)
     // vê o email do utilizador atual
     char* email = get_email(users, get_current_username());
 
+
     // gera código
     code = rand_string(malloc(sizeof(char[code_length + 1])), code_length + 1);
     code_inserted = 0;
     tries = 0;
 
     // envia email
-    int email_status = send_mail(code, email, 0);
+    int email_status = send_mail(code, email, 1);
     if(email_status != 0)
         return email_status; 
-
+    free_users(users);
     signal(SIGALRM, timer);
 
     // abre janela input
@@ -166,13 +174,6 @@ int check_code(int code_length, int sec_wait, int max_tries)
     g_application_run (G_APPLICATION (g_app), 0, NULL);
     alarm(0);
     g_object_unref(g_app);
-
-
-    if(code_inserted == 0) {
-        printf("Failed\n");
-    } else {
-        printf("Success\n");
-    }
 
 	return code_inserted;
 }
