@@ -3,7 +3,6 @@
 /* 
  * Usa libcurl para enviar um email com SMTP e TLS
  */
-       
 #define USERNAME    "psd.fuse.auth@gmail.com"
 #define PASSWORD    "WaTnsXNY4qNu7Fv"
 
@@ -43,7 +42,7 @@ static size_t payload_source(void *ptr, size_t size, size_t nmemb, void *userp)
   return 0;
 }
 
-int send_mail(const char* code, const char* to) 
+int send_mail(const char* code, const char* to, int debug) 
 {
 
     CURL *curl;
@@ -83,7 +82,8 @@ int send_mail(const char* code, const char* to)
         curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
 
         // debug
-        curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+        if(debug)
+          curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 
         // Send the message 
         res = curl_easy_perform(curl);

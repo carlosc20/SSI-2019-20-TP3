@@ -3,11 +3,10 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <pwd.h>
+#include <sys/random.h>
+#include <stdlib.h>
+#include <gtk/gtk.h>
 
-typedef struct User_struct *User;
+#include "mail.h"
 
-int read_users(User* users);
-
-char* get_email(const User* users, const char* name);
-
-char* get_rand_code(int length);
+int check_code(int code_length, int sec_wait, int max_tries);

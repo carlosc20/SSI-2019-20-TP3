@@ -1,20 +1,8 @@
 #include "security_code.h"
-#include "mail.h"
 
 
-#include <sys/types.h> /* pid_t */
-#include <sys/wait.h> 
-#include <sys/random.h>
-#include <stdlib.h>
-
-#include <pthread.h>
-
-#include <gtk/gtk.h>
-
-#define CODE_LENGTH 5 // code length
-#define SEC_WAIT 30 // seconds before code expires
-
-typedef struct User_struct {
+typedef struct User_struct 
+{
     char* name;
     char* email;
 } *User;
@@ -36,18 +24,19 @@ static void free_user(User user)
 }
 
 // preenche o array com users, NULL terminated
-int read_users(User* users)
+// abre o ficheiro users
+static int read_users(User users[], size_t size ,char* path)
 {
     char* line = NULL;
     size_t len = 0;
     ssize_t read;
 
-    FILE* fp = fopen("users", "r");
+    FILE* fp = fopen(path, "r");
     if (fp == NULL)
         return -1;
 
     int i = 0;
-    while ((read = getline(&line, &len, fp)) != -1) {
+    while ((read = getline(&line, &len, fp)) != -1 && i < size - 1) {
         char username[32];
         char email[32];
         sscanf(line, "%[^:]:%s", username, email);
@@ -60,18 +49,20 @@ int read_users(User* users)
         free(line);
 
     fclose(fp);
+
+    return i;
 }
 
-char* get_email(const User* users, const char* name)
+static char* get_email(const User* users, const char* name)
 {
     for(int i = 0; users[i]; i++) {
         if(!strcmp(users[i]->name, name))
             return users[i]->email;
     }
+    return NULL;
 }
 
-
-char* get_current_username()
+static char* get_current_username()
 {
     uid_t uid = geteuid();
     struct passwd *pw = getpwuid(uid);
@@ -81,16 +72,15 @@ char* get_current_username()
     return NULL;
 }
 
-
+// devolve a str passada
 static char* rand_string(char* str, size_t size)
 {
+    const char charset[] = "0123456789QWERTYUIOPASDFGHJKLZXCVBNM";
     unsigned int buf[5]; 
     getrandom(&buf, sizeof(buf), GRND_RANDOM);
-    const char charset[] = "0123456789QWERTYUIOPASDFGHJKLZXCVBNM";
     if (size) {
         --size;
         for (size_t n = 0; n < size; n++) {
-            printf("%d\n", buf[n]);
             int key = buf[n] % (int) (sizeof charset - 1);
             str[n] = charset[key];
         }
@@ -99,14 +89,11 @@ static char* rand_string(char* str, size_t size)
     return str;
 }
 
-char* get_rand_code(int length) {
-    return rand_string(malloc(sizeof(char[length + 1])), length + 1);
-}
+static int MAX_TRIES;
 
-
-int code_inserted;
-char *code;
-GtkApplication *app;
+static int code_inserted;
+static char *code;
+static int tries;
 
 static void enter_callback(GtkWidget *widget, GtkWidget *window)
 {
@@ -119,18 +106,20 @@ static void enter_callback(GtkWidget *widget, GtkWidget *window)
         gtk_window_close(GTK_WINDOW (window));
     } else {
         printf ("Mau codigo\n");
+        tries++;
+        if(tries >= MAX_TRIES)
+            gtk_window_close(GTK_WINDOW (window));
     }
-
 }
 
-static void activate (GtkApplication* app, gpointer user_data)
+static void activate (GtkApplication* app, int* code_length)
 {
-    GtkWidget *window = gtk_application_window_new (app);
+    GtkWidget *window = gtk_application_window_new(app);
     gtk_window_set_title (GTK_WINDOW (window), "Insert Security Code");
     gtk_window_set_default_size (GTK_WINDOW (window), 250, 20);
 
     GtkWidget *entry = gtk_entry_new ();
-    gtk_entry_set_max_length (GTK_ENTRY (entry), CODE_LENGTH);
+    gtk_entry_set_max_length (GTK_ENTRY (entry), *code_length);
     g_signal_connect (entry, "activate", G_CALLBACK (enter_callback), window);
     gtk_entry_set_text (GTK_ENTRY (entry), "code");
 
@@ -139,38 +128,44 @@ static void activate (GtkApplication* app, gpointer user_data)
     gtk_widget_show_all (window);
 }
 
-void timer(int c) {
-    g_application_quit(G_APPLICATION(app));
+static GtkApplication *g_app;
+
+void timer(int c) 
+{
+    g_application_quit(G_APPLICATION(g_app));
 }
 
-int main(void)
+int check_code(int code_length, int sec_wait, int max_tries)
 {
+    MAX_TRIES = max_tries;
+
     // lê ficheiro users
     User users[64];
-    if(read_users(users) != 0)
+    if(read_users(users, sizeof(users), "/home/carlos/users") <= 0)
         return -1;
      
     // vê o email do utilizador atual
-    char* email = get_email(users,get_current_username());
+    char* email = get_email(users, get_current_username());
 
     // gera código
-    code = get_rand_code(CODE_LENGTH);
+    code = rand_string(malloc(sizeof(char[code_length + 1])), code_length + 1);
     code_inserted = 0;
+    tries = 0;
 
     // envia email
-    //int email_status = send_mail(code, email);
-    //if(email_status != 0)
-    //    return email_status; 
+    int email_status = send_mail(code, email, 0);
+    if(email_status != 0)
+        return email_status; 
 
     signal(SIGALRM, timer);
 
     // abre janela input
-    app = gtk_application_new ("org.security_code", G_APPLICATION_FLAGS_NONE);
-    g_signal_connect (app, "activate", G_CALLBACK (activate), NULL);
-    alarm(SEC_WAIT);
-    g_application_run (G_APPLICATION (app), 0, NULL);
+    g_app = gtk_application_new ("org.security_code", G_APPLICATION_FLAGS_NONE);
+    g_signal_connect (g_app, "activate", G_CALLBACK (activate), &code_length);
+    alarm(sec_wait);
+    g_application_run (G_APPLICATION (g_app), 0, NULL);
     alarm(0);
-    g_object_unref(app);
+    g_object_unref(g_app);
 
 
     if(code_inserted == 0) {
@@ -179,5 +174,6 @@ int main(void)
         printf("Success\n");
     }
 
-	return 0;
+	return code_inserted;
 }
+

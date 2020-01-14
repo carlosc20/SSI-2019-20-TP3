@@ -51,6 +51,7 @@
 #endif
 #include <sys/file.h> /* flock(2) */
 
+#include "security_code.h"
 
 static void *xmp_init(struct fuse_conn_info *conn,
 		      struct fuse_config *cfg)
@@ -377,8 +378,11 @@ static int xmp_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 static int xmp_open(const char *path, struct fuse_file_info *fi)
 {
+	printf("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
+	if(check_code(5, 30, 3) != 1)
+		return -1;
 
-
+	printf("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB\n");
 
 	int fd;
 
