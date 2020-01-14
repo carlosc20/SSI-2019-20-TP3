@@ -4,11 +4,15 @@
 
 #include <sys/types.h> /* pid_t */
 #include <sys/wait.h> 
+#include <sys/random.h>
+#include <stdlib.h>
+
+#include <pthread.h>
 
 #include <gtk/gtk.h>
 
 #define CODE_LENGTH 5 // code length
-#define SEC_WAIT 10 // seconds before code expires
+#define SEC_WAIT 30 // seconds before code expires
 
 typedef struct User_struct {
     char* name;
@@ -80,12 +84,14 @@ char* get_current_username()
 
 static char* rand_string(char* str, size_t size)
 {
-    srand(time(0)); // melhor random?
+    unsigned int buf[5]; 
+    getrandom(&buf, sizeof(buf), GRND_RANDOM);
     const char charset[] = "0123456789QWERTYUIOPASDFGHJKLZXCVBNM";
     if (size) {
         --size;
         for (size_t n = 0; n < size; n++) {
-            int key = rand() % (int) (sizeof charset - 1);
+            printf("%d\n", buf[n]);
+            int key = buf[n] % (int) (sizeof charset - 1);
             str[n] = charset[key];
         }
         str[size] = '\0';
@@ -100,8 +106,9 @@ char* get_rand_code(int length) {
 
 int code_inserted;
 char *code;
+GtkApplication *app;
 
-static void enter_callback(GtkWidget *widget, GtkApplication* app)
+static void enter_callback(GtkWidget *widget, GtkWidget *window)
 {
     const gchar *entry_text = gtk_entry_get_text (GTK_ENTRY (widget));
     printf ("Entry: %s\nCode: %s\n", entry_text, code);
@@ -109,7 +116,7 @@ static void enter_callback(GtkWidget *widget, GtkApplication* app)
     if(strcmp(code, entry_text) == 0) {
         code_inserted = 1;
         printf ("Bom codigo\n");
-        g_application_quit(G_APPLICATION(app));
+        gtk_window_close(GTK_WINDOW (window));
     } else {
         printf ("Mau codigo\n");
     }
@@ -124,12 +131,16 @@ static void activate (GtkApplication* app, gpointer user_data)
 
     GtkWidget *entry = gtk_entry_new ();
     gtk_entry_set_max_length (GTK_ENTRY (entry), CODE_LENGTH);
-    g_signal_connect (entry, "activate", G_CALLBACK (enter_callback), app);
+    g_signal_connect (entry, "activate", G_CALLBACK (enter_callback), window);
     gtk_entry_set_text (GTK_ENTRY (entry), "code");
 
     gtk_container_add (GTK_CONTAINER (window), entry);
 
     gtk_widget_show_all (window);
+}
+
+void timer(int c) {
+    g_application_quit(G_APPLICATION(app));
 }
 
 int main(void)
@@ -142,45 +153,30 @@ int main(void)
     // vê o email do utilizador atual
     char* email = get_email(users,get_current_username());
 
-    // envia email
-    /*
-    int email_status = send_mail(code, email);
-    if(email_status != 0)
-        return email_status; 
-    */
-
     // gera código
     code = get_rand_code(CODE_LENGTH);
     code_inserted = 0;
 
-    int fd[2];
-    pipe(fd);
-    pid_t pid = fork();
-    if (pid==0) { // child
-        alarm(SEC_WAIT); // tempo para introduzir código
+    // envia email
+    //int email_status = send_mail(code, email);
+    //if(email_status != 0)
+    //    return email_status; 
 
-        // app gtk para input do código
-        GtkApplication *app = gtk_application_new ("org.security_code", G_APPLICATION_FLAGS_NONE);
-        g_signal_connect (app, "activate", G_CALLBACK (activate), NULL);
-        int gtkstatus = g_application_run (G_APPLICATION (app), 0, NULL);
-        g_object_unref (app);
+    signal(SIGALRM, timer);
 
-        alarm(0);
-        exit(0);
+    // abre janela input
+    app = gtk_application_new ("org.security_code", G_APPLICATION_FLAGS_NONE);
+    g_signal_connect (app, "activate", G_CALLBACK (activate), NULL);
+    alarm(SEC_WAIT);
+    g_application_run (G_APPLICATION (app), 0, NULL);
+    alarm(0);
+    g_object_unref(app);
+
+
+    if(code_inserted == 0) {
+        printf("Failed\n");
     } else {
-        int status;
-        wait(&status);
-        if(WIFSIGNALED(status)){
-            if (WTERMSIG(status) == SIGALRM) {
-                printf("Code expired after %d sec\n", SEC_WAIT);
-            }
-        } else {
-            if(code_inserted == 0) {
-                printf("Failed\n");
-            } else {
-                printf("Success\n");
-            }
-        }
+        printf("Success\n");
     }
 
 	return 0;
