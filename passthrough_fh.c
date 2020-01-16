@@ -51,6 +51,7 @@
 #endif
 #include <sys/file.h> /* flock(2) */
 
+#include <time.h>
 #include "security_code.h"
 
 static void *xmp_init(struct fuse_conn_info *conn,
@@ -375,14 +376,25 @@ static int xmp_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 	return 0;
 }
 
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 static int xmp_open(const char *path, struct fuse_file_info *fi)
 {
-	printf("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
-	if(check_code(5, 30, 3) != 1)
-		return -1;
+	static const double COOLDOWN_S = 60;
+	static time_t last_attempt = 0;
 
-	printf("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB\n");
+	time_t new_attempt = time(0);
+	double datetime_diff_s = difftime(new_attempt, last_attempt);
+	if(datetime_diff_s < COOLDOWN_S){
+		return -1;
+	}
+
+	int result = check_code(5, 30, 3);
+	if(result != 1){
+		if(result == -2)
+			last_attempt = time(0);
+		return -1;
+	}
 
 	int fd;
 

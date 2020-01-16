@@ -45,8 +45,8 @@ static int read_users(User users[], size_t size ,char* path)
 
     int i = 0;
     while ((read = getline(&line, &len, fp)) != -1 && i < size - 1) {
-        char username[32];
-        char email[32];
+        char username[64];
+        char email[254];
         sscanf(line, "%[^:]:%s", username, email);
         users[i] = init_user(username, email);
         i++;
@@ -72,12 +72,7 @@ static char* get_email(const User* users, const char* name)
 
 static char* get_current_username()
 {
-    uid_t uid = geteuid();
-    struct passwd *pw = getpwuid(uid);
-    if (pw) {
-        return pw->pw_name;
-    }
-    return NULL;
+    return getenv("USER");
 }
 
 // devolve a str passada
@@ -115,8 +110,10 @@ static void enter_callback(GtkWidget *widget, GtkWidget *window)
     } else {
         printf("%p", g_window);
         tries++;
-        if(tries >= MAX_TRIES)
+        if(tries >= MAX_TRIES){
+            code_inserted = -2;
             gtk_window_close(GTK_WINDOW (g_window));
+        }
     }
 }
 
@@ -168,7 +165,7 @@ int check_code(int code_length, int sec_wait, int max_tries)
     signal(SIGALRM, timer);
 
     // abre janela input
-    g_app = gtk_application_new ("org.security_code", G_APPLICATION_FLAGS_NONE);
+    GtkApplication* g_app = gtk_application_new ("org.security_code", G_APPLICATION_FLAGS_NONE);
     g_signal_connect (g_app, "activate", G_CALLBACK (activate), &code_length);
     alarm(sec_wait);
     g_application_run (G_APPLICATION (g_app), 0, NULL);
