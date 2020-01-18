@@ -380,6 +380,12 @@ static int xmp_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 static int xmp_open(const char *path, struct fuse_file_info *fi)
 {
+	int fd;
+
+	fd = open(path, fi->flags);
+	if (fd == -1)
+		return -errno;
+
 	static const double COOLDOWN_S = 60;
 	static time_t last_attempt = 0;
 
@@ -395,12 +401,6 @@ static int xmp_open(const char *path, struct fuse_file_info *fi)
 			last_attempt = time(0);
 		return -1;
 	}
-
-	int fd;
-
-	fd = open(path, fi->flags);
-	if (fd == -1)
-		return -errno;
 
 	fi->fh = fd;
 	return 0;

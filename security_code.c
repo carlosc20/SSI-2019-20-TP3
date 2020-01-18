@@ -145,7 +145,7 @@ int check_code(int code_length, int sec_wait, int max_tries)
 
     // lê ficheiro users
     User users[64];
-    if(read_users(users, sizeof(users), "/home/carlos/users") <= 0)
+    if(read_users(users, sizeof(users), "/users") <= 0)
         return -1;
      
     // vê o email do utilizador atual
